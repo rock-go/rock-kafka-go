@@ -5,6 +5,7 @@ import (
 	"github.com/Shopify/sarama"
 	"github.com/rock-go/rock/auxlib"
 	"github.com/rock-go/rock/lua"
+	"github.com/rock-go/rock/node"
 	"strings"
 )
 
@@ -33,44 +34,25 @@ type config struct {
 	heartbeat   int // 心跳检测周期
 }
 
+func def() *config {
+	return &config{
+		key: node.ID(),
+		num: 100,
+		flush: 5,
+		buffer: 4096,
+		thread: 5,
+		limit: 0,
+		require_ack: 1,
+		compression: 1,//gzip
+		heartbeat: 5,
+	}
+}
+
 func newConfig(L *lua.LState) *config {
 	tab := L.CheckTable(1)
-	cfg := &config{}
-	tab.ForEach(func(key lua.LValue, val lua.LValue) {
-		if key.Type() != lua.LTString {
-			L.RaiseError("kafka producer key must be string , got %s", key.Type().String())
-			return
-		}
-
-		switch key.String() {
-		case "name":
-			cfg.name = val.String()
-		case "addr":
-			cfg.addr = val.String()
-		case "topic":
-			cfg.topic = val.String()
-		case "compression":
-			cfg.compression = auxlib.LValueToInt(val, 0)
-
-		case "timeout":
-			cfg.timeout = auxlib.LValueToInt(val, 1)
-		case "num":
-			cfg.num = auxlib.LValueToInt(val, 10)
-		case "flush":
-			cfg.flush = auxlib.LValueToInt(val, 5)
-		case "buffer":
-			cfg.buffer = auxlib.LValueToInt(val, 4096)
-		case "thread":
-			cfg.thread = auxlib.LValueToInt(val, 5)
-		case "limit":
-			cfg.limit = auxlib.LValueToInt(val, 0)
-		case "heartbeat":
-			cfg.heartbeat = auxlib.LValueToInt(val, 5)
-
-		default:
-			L.RaiseError("not found kafka producer %s config", key.String())
-			return
-		}
+	cfg := def()
+	tab.Range(func(key string, val lua.LValue) {
+		cfg.setField(L , key , val)
 	})
 
 	if e := cfg.verify(); e != nil {
@@ -79,6 +61,38 @@ func newConfig(L *lua.LState) *config {
 	}
 
 	return cfg
+}
+
+func (cfg *config) setField(L *lua.LState , key string , val lua.LValue) {
+	switch key {
+	case "name":
+		cfg.name = val.String()
+	case "addr":
+		cfg.addr = val.String()
+	case "topic":
+		cfg.topic = val.String()
+	case "compression":
+		cfg.compression = auxlib.LValueToInt(val, 1)
+
+	case "timeout":
+		cfg.timeout = auxlib.LValueToInt(val, 1)
+	case "num":
+		cfg.num = auxlib.LValueToInt(val, 10)
+	case "flush":
+		cfg.flush = auxlib.LValueToInt(val, 5)
+	case "buffer":
+		cfg.buffer = auxlib.LValueToInt(val, 4096)
+	case "thread":
+		cfg.thread = auxlib.LValueToInt(val, 5)
+	case "limit":
+		cfg.limit = auxlib.LValueToInt(val, 0)
+	case "heartbeat":
+		cfg.heartbeat = auxlib.LValueToInt(val, 5)
+
+	default:
+		L.RaiseError("not found kafka producer %s config", key)
+		return
+	}
 }
 
 func (cfg *config) verify() error {
